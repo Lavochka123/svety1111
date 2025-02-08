@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Выбор времени</title>
+</head>
+<body>
+    <h2>Выберите удобное время</h2>
+    <p><strong>{{ intro }}</strong></p>
+    <p>{{ proposal }}</p>
+
+    <form method="POST" action="{{ url_for('choose_time') }}">
+        {% for t in times %}
+            <div>
+                <input type="radio" name="selected_time" value="{{ t }}" required> {{ t }}
+            </div>
+        {% endfor %}
+        <!-- Важно! Передаём invite_id скрытым полем -->
+        <input type="hidden" name="invite_id" value="{{ invite_id }}">
+        <button type="submit">Подтвердить выбор</button>
+    </form>
+</body>
+</html>

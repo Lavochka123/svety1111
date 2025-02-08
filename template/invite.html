@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Приглашение</title>
+</head>
+<body>
+    <h2>{{ data.intro }}</h2>
+    <p>{{ data.proposal }}</p>
+
+    <!-- Ссылка на выбор времени (передаём id=data.id) -->
+    <p>
+      <a href="{{ url_for('choose_time', id=data.id) }}">
+        Выбрать время
+      </a>
+    </p>
+
+    <!-- Кнопка "Извини, не могу" (пример AJAX) -->
+    <button id="cannotBtn">Извини, не могу</button>
+
+    <script>
+    document.getElementById('cannotBtn').addEventListener('click', function() {
+        fetch('/response', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: '{{ data.chat_id }}',
+                response: 'Извини, я не смогу прийти'
+            })
+        })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp.status === 'ok') {
+                alert('Ответ отправлен!');
+            } else {
+                alert('Ошибка при отправке ответа!');
+            }
+        })
+        .catch(err => {
+            alert('Ошибка: ' + err);
+        });
+    });
+    </script>
+</body>
+</html>
