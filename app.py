@@ -1,19 +1,21 @@
-from flask import Flask, render_template, request, jsonify
+# app.py
+from flask import Flask, render_template, request, redirect, url_for
 import telegram
 import asyncio
 import threading
 import sqlite3
+import json
+from flask import jsonify
 
 TELEGRAM_BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 
-app = Flask(__name__, template_folder='template')
+app = Flask(__name__, template_folder='templates')  # Убедитесь, что папка называется 'templates'
 DB_PATH = "app.db"
 
 def init_db():
     """
-    Создаёт таблицу invitations с нужными полями, если она не существует.
-    Убедитесь, что схема совпадает с ботом: page1, page2, page3, times.
+    Создаёт таблицу invitations (page1, page2, page3, times, design, chat_id), если её нет.
     """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -42,7 +44,7 @@ def run_loop(loop):
 threading.Thread(target=run_loop, args=(loop,), daemon=True).start()
 
 def send_message_sync(chat_id, message):
-    """Отправляет сообщение в Телеграм, используя global event loop."""
+    """Отправка в Телеграм через глобальный event loop."""
     future = asyncio.run_coroutine_threadsafe(
         bot.send_message(chat_id=chat_id, text=message),
         loop
@@ -50,7 +52,7 @@ def send_message_sync(chat_id, message):
     return future.result(timeout=10)
 
 def get_invitation(invite_id):
-    """Получает данные приглашения из БД по ID (со всеми page1, page2, page3)."""
+    """Получаем данные из БД: page1, page2, page3, times, chat_id, design."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('SELECT design, page1, page2, page3, times, chat_id FROM invitations WHERE id = ?', (invite_id,))
@@ -68,106 +70,130 @@ def get_invitation(invite_id):
         }
     return None
 
-@app.route('/invite/<invite_id>', methods=['GET'])
-def invite_page(invite_id):
-    """Основная страница с приглашением (4 «страницы» текста)."""
+
+# ---------- 1) Страница 1 ----------
+@app.route('/invite/<invite_id>/page1')
+def page1(invite_id):
+    """
+    Показывает ТОЛЬКО text page1. Кнопка [Дальше] -> /invite/<id>/page2
+    """
     data = get_invitation(invite_id)
     if not data:
-        return "Приглашение не найдено или было удалено.", 404
-    return render_template('invite.html', data=data)
+        return "Приглашение не найдено.", 404
+    return render_template('page1.html', data=data)
 
-@app.route('/choose_time', methods=['GET', 'POST'])
-def choose_time():
-    """Страница выбора времени."""
+
+# ---------- 2) Страница 2 ----------
+@app.route('/invite/<invite_id>/page2')
+def page2(invite_id):
+    """
+    Показывает text page2. Кнопка [Дальше] -> /invite/<id>/page3
+    """
+    data = get_invitation(invite_id)
+    if not data:
+        return "Приглашение не найдено.", 404
+    return render_template('page2.html', data=data)
+
+
+# ---------- 3) Страница 3 ----------
+@app.route('/invite/<invite_id>/page3')
+def page3(invite_id):
+    """
+    Показывает text page3. Две кнопки: [Да] -> /invite/<id>/page4, [Нет] -> AJAX /response
+    """
+    data = get_invitation(invite_id)
+    if not data:
+        return "Приглашение не найдено.", 404
+    return render_template('page3.html', data=data)
+
+
+# ---------- 4) Страница 4 (выбор времени) ----------
+@app.route('/invite/<invite_id>/page4', methods=['GET', 'POST'])
+def page4(invite_id):
+    """
+    GET: Показываем варианты времени (times), без доп. заголовка.
+    POST: обрабатываем выбранное время, отправляем в Телеграм -> редирект на page5.
+    """
+    data = get_invitation(invite_id)
+    if not data:
+        return "Приглашение не найдено.", 404
+
     if request.method == 'GET':
-        invite_id = request.args.get('id')
-        if not invite_id:
-            return "Параметр id не указан", 400
-        data = get_invitation(invite_id)
-        if not data:
-            return "Приглашение не найдено", 404
-        return render_template(
-            'choose_time.html',
-            page1=data["page1"],
-            page2=data["page2"],
-            page3=data["page3"],
-            times=data["times"],
-            chat_id=data["chat_id"],
-            invite_id=data["id"],
-            design=data["design"]
-        )
-    else:
-        # POST: пользователь выбрал время
-        selected_time = request.form.get('selected_time')
-        invite_id = request.form.get('invite_id')
-        data = get_invitation(invite_id)
-        if not data:
-            return "Приглашение не найдено (возможно, устарело).", 404
+        return render_template('page4.html', data=data)
 
-        chat_id = data["chat_id"]
-        message = f"Девушка выбрала время: {selected_time}"
-        try:
-            send_message_sync(chat_id, message)
-        except Exception as e:
-            print("Ошибка при отправке сообщения в Telegram:", e)
+    # POST: пользователь выбрал время
+    selected_time = request.form.get('selected_time')
+    if not selected_time:
+        return "Вы не выбрали время!", 400
 
-        return render_template(
-            'confirmation.html',
-            page1=data["page1"],
-            page2=data["page2"],
-            page3=data["page3"],
-            selected_time=selected_time,
-            invite_id=data["id"],
-            design=data["design"]
-        )
+    # Отправляем сообщение в Телеграм
+    chat_id = data["chat_id"]
+    msg = f"Девушка выбрала время: {selected_time}"
+    try:
+        send_message_sync(chat_id, msg)
+    except Exception as e:
+        print("Ошибка при отправке сообщения в Telegram:", e)
 
+    # Перенаправляем на страницу 5, передавая выбранное время в URL
+    return redirect(url_for('page5', invite_id=invite_id, selected_time=selected_time))
+
+
+# ---------- 5) Страница 5 (Спасибо + комментарий) ----------
+@app.route('/invite/<invite_id>/page5', methods=['GET'])
+def page5(invite_id):
+    """
+    Спасибо за ответ! Вы выбрали время: <selected_time>
+    Форма для комментария -> /comment (POST)
+    """
+    data = get_invitation(invite_id)
+    if not data:
+        return "Приглашение не найдено.", 404
+
+    selected_time = request.args.get('selected_time', '')
+    return render_template('page5.html', data=data, selected_time=selected_time)
+
+
+# ---------- Кнопка "Извини, не могу" (AJAX), переиспользуем старую логику ----------
 @app.route('/response', methods=['POST'])
 def response():
-    """Кнопка 'Извини, не могу' (AJAX) с invite.html."""
-    data = request.get_json()
-    chat_id = data.get('chat_id')
-    response_text = data.get('response')
-    selected_time = data.get('selected_time', '')
-
-    message = f"Девушка ответила: {response_text}"
-    if selected_time:
-        message += f"\nВыбранное время: {selected_time}"
-
+    req_data = request.get_json()
+    chat_id = req_data.get('chat_id')
+    response_text = req_data.get('response', 'Извини, не могу')
     try:
-        if chat_id is not None:
-            chat_id = int(chat_id)
-        send_message_sync(chat_id, message)
+        chat_id = int(chat_id)
+        send_message_sync(chat_id, f"Девушка ответила: {response_text}")
     except Exception as e:
         print("Ошибка при отправке ответа в Telegram:", e)
         return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "ok"}), 200
 
+
+# ---------- Обработка комментария (после выбора времени) ----------
 @app.route('/comment', methods=['POST'])
 def comment():
     """
-    Новый эндпоинт для отправки комментария.
-    На confirmation.html будет форма <form> c методом POST.
+    Принимаем invite_id и сам комментарий, отправляем в Телеграм
     """
     invite_id = request.form.get('invite_id')
     comment_text = request.form.get('comment', '').strip()
 
     data = get_invitation(invite_id)
     if not data:
-        return "Приглашение не найдено (возможно, устарело).", 404
+        return "Приглашение не найдено.", 404
 
     chat_id = data["chat_id"]
     message = f"Девушка оставила комментарий: {comment_text}"
 
     try:
-        if chat_id is not None:
-            chat_id = int(chat_id)
+        chat_id = int(chat_id)
         send_message_sync(chat_id, message)
     except Exception as e:
         print("Ошибка при отправке комментария в Telegram:", e)
         return "Ошибка при отправке комментария.", 500
 
     return render_template('thanks_comment.html')
+
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)
