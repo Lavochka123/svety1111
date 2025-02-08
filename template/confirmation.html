@@ -3,23 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <title>Подтверждение</title>
-  <link href="https://fonts.googleapis.com/css?family=Montserrat:400,600|Roboto:300,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="{{ design }}">
   <div class="container">
-    <div class="envelope">
-      <!-- Можно скрыть клапан, если не нужен -->
-      <div class="envelope-flap" style="display: none;"></div>
-      <div class="envelope-body">
-        <div class="letter-content">
-          <h1>{{ intro }}</h1>
-          <p>{{ proposal }}</p>
-        </div>
-      </div>
-    </div>
+    <h1>Спасибо за ответ!</h1>
     <p>Вы выбрали время: <strong>{{ selected_time }}</strong></p>
-    <p>Ваш выбор отправлен!</p>
+    <div class="invitation-text">
+      <p>{{ page1 }}</p>
+      <p>{{ page2 }}</p>
+      <p>{{ page3 }}</p>
+    </div>
+
+    <p>Если хочешь, можешь оставить комментарий:</p>
+    <form method="POST" action="/comment">
+      <input type="hidden" name="invite_id" value="{{ invite_id }}">
+      <textarea name="comment" rows="4" cols="50" placeholder="Напиши тут свои мысли..."></textarea>
+      <br><br>
+      <button type="submit" class="button">Отправить комментарий</button>
+    </form>
+
   </div>
 </body>
 </html>
