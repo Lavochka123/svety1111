@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <title>Приглашение</title>
-  <link href="https://fonts.googleapis.com/css?family=Montserrat:400,600|Roboto:300,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="{{ data.design }}">
@@ -15,8 +14,10 @@
       <div class="envelope-flap"></div>
       <div class="envelope-body">
         <div class="letter-content">
-          <h1>{{ data.intro }}</h1>
-          <p>{{ data.proposal }}</p>
+          <!-- Три отдельных страницы -->
+          <p>{{ data.page1 }}</p>
+          <p>{{ data.page2 }}</p>
+          <p>{{ data.page3 }}</p>
         </div>
       </div>
     </div>
