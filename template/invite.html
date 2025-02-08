@@ -1,45 +1,63 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>Приглашение</title>
+  <meta charset="UTF-8">
+  <title>Приглашение</title>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:400,600|Roboto:300,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
-    <h2>{{ data.intro }}</h2>
-    <p>{{ data.proposal }}</p>
+<body class="{{ data.design }}">
+  <div class="container">
+    <div class="envelope">
+      <div class="heart heart1">❤️</div>
+      <div class="heart heart2">❤️</div>
+      <div class="heart heart3">❤️</div>
+      <div class="envelope-flap"></div>
+      <div class="envelope-body">
+        <div class="letter-content">
+          <h1>{{ data.intro }}</h1>
+          <p>{{ data.proposal }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="button-container">
+      <button class="button" onclick="handleResponse('no')">Извини, не могу</button>
+      <button class="button" onclick="handleResponse('yes')">Да, выберу время</button>
+    </div>
+  </div>
 
-    <!-- Ссылка на выбор времени (передаём id=data.id) -->
-    <p>
-      <a href="{{ url_for('choose_time', id=data.id) }}">
-        Выбрать время
-      </a>
-    </p>
+  <script>
+    const chatId = "{{ data.chat_id }}";
+    const inviteId = "{{ data.id }}";
 
-    <!-- Кнопка "Извини, не могу" (пример AJAX) -->
-    <button id="cannotBtn">Извини, не могу</button>
-
-    <script>
-    document.getElementById('cannotBtn').addEventListener('click', function() {
+    function handleResponse(response) {
+      if (response === 'yes') {
+        // Переход на страницу выбора времени
+        window.location.href = '/choose_time?id=' + inviteId;
+      } else {
+        // AJAX-запрос для уведомления бота об отказе
         fetch('/response', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: '{{ data.chat_id }}',
-                response: 'Извини, я не смогу прийти'
-            })
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            chat_id: chatId,
+            response: 'Извини, не могу'
+          })
         })
-        .then(r => r.json())
-        .then(resp => {
-            if (resp.status === 'ok') {
-                alert('Ответ отправлен!');
-            } else {
-                alert('Ошибка при отправке ответа!');
-            }
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "ok") {
+            alert("Ваш ответ отправлен!");
+          } else {
+            alert("Ошибка при отправке ответа: " + data.message);
+          }
         })
-        .catch(err => {
-            alert('Ошибка: ' + err);
+        .catch(error => {
+          console.error('Ошибка:', error);
+          alert("Ошибка при отправке ответа.");
         });
-    });
-    </script>
+      }
+    }
+  </script>
 </body>
 </html>
