@@ -7,11 +7,15 @@
 </head>
 <body class="{{ data.design }}">
   <div class="container">
-    <!-- Просто отображаем page1 -->
-    <p>{{ data.page1 }}</p>
+    <!-- Просто текст (page1) -->
+    <div class="letter-content">
+      <p>{{ data.page1 }}</p>
+    </div>
 
-    <!-- Кнопка ведёт на 2-ю страницу -->
-    <a href="/invite/{{ data.id }}/page2" class="button">Дальше</a>
+    <!-- Кнопка "Дальше" в отдельном блоке, чтобы не перекрывать текст -->
+    <div class="button-container" style="margin-top: 2rem;">
+      <a href="/invite/{{ data.id }}/page2" class="button">Дальше</a>
+    </div>
   </div>
 </body>
 </html>
