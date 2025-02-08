@@ -7,9 +7,13 @@
 </head>
 <body class="{{ data.design }}">
   <div class="container">
-    <p>{{ data.page3 }}</p>
+    <!-- Можно вернуть "конверт", если хотите анимацию, но по условию "всё норм" – оставим. -->
+    <div class="letter-content">
+      <p>{{ data.page3 }}</p>
+    </div>
 
-    <div class="button-container">
+    <div class="button-container" style="margin-top: 2rem;">
+      <!-- Кнопка "Нет" (AJAX) и "Да" (ссылка на page4) -->
       <button class="button" onclick="handleResponse('no')">Нет</button>
       <a href="/invite/{{ data.id }}/page4" class="button">Да</a>
     </div>
@@ -19,7 +23,6 @@
     const chatId = "{{ data.chat_id }}";
     function handleResponse(response) {
       if (response === 'no') {
-        // AJAX /response
         fetch('/response', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -33,7 +36,7 @@
           if (resp.status === 'ok') {
             alert("Ваш отказ отправлен!");
           } else {
-            alert("Ошибка при отправке ответа: " + resp.message);
+            alert("Ошибка: " + resp.message);
           }
         })
         .catch(err => {
