@@ -1,23 +1,33 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <title>Выбор времени</title>
+  <meta charset="UTF-8">
+  <title>Выбор времени</title>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:400,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
-    <h2>Выберите удобное время</h2>
-    <p><strong>{{ intro }}</strong></p>
-    <p>{{ proposal }}</p>
-
-    <form method="POST" action="{{ url_for('choose_time') }}">
-        {% for t in times %}
-            <div>
-                <input type="radio" name="selected_time" value="{{ t }}" required> {{ t }}
-            </div>
+<body class="{{ design }}">
+  <div class="container">
+    <h1>Выбери удобное время для встречи</h1>
+    <div class="invitation-text">
+      <h2>{{ intro }}</h2>
+      <p>{{ proposal }}</p>
+    </div>
+    <form method="post" action="/choose_time">
+      <ul class="time-list">
+        {% for time in times %}
+          <li>
+            <label>
+              <input type="radio" name="selected_time" value="{{ time }}" required>
+              {{ time }}
+            </label>
+          </li>
         {% endfor %}
-        <!-- Важно! Передаём invite_id скрытым полем -->
-        <input type="hidden" name="invite_id" value="{{ invite_id }}">
-        <button type="submit">Подтвердить выбор</button>
+      </ul>
+      <!-- Скрытые поля для передачи invite_id -->
+      <input type="hidden" name="invite_id" value="{{ invite_id }}">
+      <button type="submit" class="button">Подтвердить</button>
     </form>
+  </div>
 </body>
 </html>
