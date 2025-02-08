@@ -7,22 +7,29 @@
 </head>
 <body class="{{ data.design }}">
   <div class="container">
-    <!-- Показываем строки из data.times -->
+    <!-- Добавляем заголовок -->
+    <h2>Выбери удобное время или укажи своё</h2>
+    <p>Пожалуйста, отметь один из вариантов:</p>
+
     <form method="POST" action="">
-      <ul>
+      <ul style="list-style-type: disc; text-align: left; margin: 1rem 2rem;">
         {% for t in data.times %}
-        <li>
+        <li style="margin-bottom: 0.5rem;">
           <label>
-            <input type="radio" name="selected_time" value="{{ t }}" required>
+            <input type="radio" name="selected_time" value="{{ t }}">
             {{ t }}
           </label>
         </li>
         {% endfor %}
       </ul>
 
-      <!-- При сабмите попадём в этот же роут (page4, POST),
-           который потом редиректит на page5. -->
-      <button type="submit" class="button">Подтвердить</button>
+      <!-- Если хотите позволить ввести свой вариант — можно добавить: 
+           <p>Или введите свой:</p>
+           <input type="text" name="custom_time" placeholder="Например: 20:00 в пятницу"> 
+           и потом в app.py проверять, если selected_time пуст, берем custom_time.
+       -->
+
+      <button type="submit" class="button" style="margin-top: 1rem;">Подтвердить</button>
     </form>
   </div>
 </body>
