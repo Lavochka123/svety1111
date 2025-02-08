@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Приглашение на свидание</title>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:400,600|Roboto:300,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="{{ data.design }}">
+  <div class="container">
+    <div class="envelope">
+      <!-- Украшения: плавающие сердечки -->
+      <div class="heart heart1">❤️</div>
+      <div class="heart heart2">❤️</div>
+      <div class="heart heart3">❤️</div>
+      <div class="envelope-flap"></div>
+      <div class="envelope-body">
+        <div class="letter-content">
+          <h1>{{ data.intro }}</h1>
+          <p>{{ data.proposal }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="button-container">
+      <button class="button" onclick="handleResponse('no')">Извини, не могу</button>
+      <button class="button" onclick="handleResponse('yes')">Да, выберу время</button>
+    </div>
+  </div>
+
+  <script>
+    const chatId = "{{ data.chat_id }}";
+    function handleResponse(response) {
+      if (response === 'yes') {
+        let currentTheme = document.body.className;
+        let intro = encodeURIComponent("{{ data.intro }}");
+        let proposal = encodeURIComponent("{{ data.proposal }}");
+        window.location.href = '/choose_time?design=' + currentTheme +
+                               '&intro=' + intro +
+                               '&proposal=' + proposal +
+                               '&chat_id=' + chatId;
+      } else {
+        // Отправляем AJAX-запрос для уведомления Telegram-бота
+        fetch('/response', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            response: 'Извини, не могу'
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "ok") {
+            alert("Ответ отправлен!");
+          } else {
+            alert("Ошибка при отправке ответа: " + data.message);
+          }
+        })
+        .catch(error => {
+          console.error('Ошибка:', error);
+          alert("Ошибка при отправке ответа.");
+        });
+      }
+    }
+  </script>
+</body>
+</html>
