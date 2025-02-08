@@ -16,7 +16,7 @@ from telegram.ext import (
 )
 
 # Этапы диалога
-DESIGN, INTRO, PROPOSAL, TIMES = range(4)
+DESIGN, PAGE1, PAGE2, PAGE3, TIMES = range(5)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -28,6 +28,7 @@ PUBLIC_URL = "http://svety.uz"
 # Подключение к базе данных (файл лежит в той же папке)
 DB_PATH = "app.db"
 
+
 def create_table_if_not_exists():
     """Создаёт таблицу invitations, если она ещё не существует."""
     conn = sqlite3.connect(DB_PATH)
@@ -36,14 +37,15 @@ def create_table_if_not_exists():
         CREATE TABLE IF NOT EXISTS invitations (
             id TEXT PRIMARY KEY,
             design TEXT,
-            intro TEXT,
-            proposal TEXT,
+            intro TEXT,       -- Сюда кладём объединённые page1 + page2
+            proposal TEXT,    -- Сюда кладём page3
             times TEXT,
             chat_id TEXT
         )
     ''')
     conn.commit()
     conn.close()
+
 
 def save_invitation(design, intro, proposal, times, chat_id):
     """
@@ -60,6 +62,7 @@ def save_invitation(design, intro, proposal, times, chat_id):
     conn.commit()
     conn.close()
     return unique_id
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога с пользователем"""
@@ -82,35 +85,69 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return DESIGN
 
+
 async def design_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка выбора дизайна"""
+    """Обработка выбора дизайна (Шаг 0)"""
     query = update.callback_query
     await query.answer()
     design = query.data
     context.user_data["design"] = design
+
     await query.edit_message_text(
-        text=f"Ты выбрал дизайн: {design}.\n\nВведи вступительный текст (intro):"
+        text=(
+            f"Ты выбрал дизайн: {design}.\n\n"
+            "Теперь введи **первую страницу** текста, например:\n"
+            "«Дорогая Настя! Хочу сказать, что ты... (и т.д.)»"
+        )
     )
-    return INTRO
+    return PAGE1
 
-async def get_intro(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получение вступительного текста"""
-    intro_text = update.message.text
-    context.user_data["intro"] = intro_text
-    await update.message.reply_text("Отлично! Теперь напиши само предложение (proposal) для встречи:")
-    return PROPOSAL
 
-async def get_proposal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получение текста приглашения"""
-    proposal_text = update.message.text
-    context.user_data["proposal"] = proposal_text
+async def get_page1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Получение текста «первой страницы» (Например, «Дорогая Настя…»)
+    """
+    page1_text = update.message.text.strip()
+    context.user_data["page1"] = page1_text
+
     await update.message.reply_text(
-        "Хорошо! Укажи 3 варианта времени (каждый с новой строки), например:\n\n"
+        "Отлично! Теперь давай создадим **вторую страницу** — "
+        "подготовительная часть (интрига или лёгкое предисловие). Например:\n\n"
+        "«Ты мне очень нравишься, и я решил(а) подготовить кое-что особенное... (и т.д.)»"
+    )
+    return PAGE2
+
+
+async def get_page2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Получение текста «второй страницы» (Подготовительная часть).
+    """
+    page2_text = update.message.text.strip()
+    context.user_data["page2"] = page2_text
+
+    await update.message.reply_text(
+        "Прекрасно! Теперь переходим к **третьей странице** — "
+        "само приглашение на свидание. Например:\n\n"
+        "«Я хочу провести с тобой особенный вечер... Давай встретимся... (и т.д.)»"
+    )
+    return PAGE3
+
+
+async def get_page3(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Получение «третьей страницы» (основное приглашение).
+    """
+    page3_text = update.message.text.strip()
+    context.user_data["page3"] = page3_text
+
+    await update.message.reply_text(
+        "Отлично! Теперь укажи 3 варианта времени (каждый с новой строки). Например:\n\n"
         "🕗 19:00 | 21 января\n"
         "🌙 20:30 | 22 января\n"
         "☕ 17:00 | 23 января"
     )
     return TIMES
+
 
 async def get_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
@@ -122,12 +159,19 @@ async def get_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     times_list = [line.strip() for line in times_text.splitlines() if line.strip()]
 
     design = context.user_data.get("design", "design_elegant")
-    intro = context.user_data.get("intro", "Привет! Я подготовил(а) что-то особенное...")
-    proposal = context.user_data.get("proposal", "Давай проведём этот вечер вместе!")
+
+    # Объединяем page1 и page2 в одно поле "intro"
+    page1 = context.user_data.get("page1", "")
+    page2 = context.user_data.get("page2", "")
+    intro_combined = page1 + "\n\n" + page2  # разделяем двумя пустыми строками
+
+    # Третья страница станет proposal
+    proposal_text = context.user_data.get("page3", "")
+
     chat_id = update.effective_chat.id
 
-    # Сохраняем всё в SQLite
-    invite_id = save_invitation(design, intro, proposal, times_list, chat_id)
+    # Сохраняем в БД
+    invite_id = save_invitation(design, intro_combined, proposal_text, times_list, chat_id)
 
     # Формируем короткий URL
     invite_url = f"{PUBLIC_URL}/invite/{invite_id}"
@@ -137,13 +181,14 @@ async def get_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     img_path = "invite_qr.png"
     img.save(img_path)
 
+    # Отправляем QR-код с итоговым сообщением
     with open(img_path, "rb") as photo:
         await update.message.reply_photo(
             photo=photo,
             caption=(
-                f"Отлично! Мини-сайт с приглашением готов.\n\n"
-                f"Вот твоя ссылка: {invite_url}\n\n"
-                f"Отправь её своей возлюбленной!"
+                f"Отлично! Твоё приглашение готово.\n\n"
+                f"Вот ссылка: {invite_url}\n\n"
+                f"Отправь её адресату (или QR-код), чтобы она могла увидеть твоё сообщение!"
             )
         )
 
@@ -151,6 +196,7 @@ async def get_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     os.remove(img_path)
 
     return ConversationHandler.END
+
 
 def main():
     """Запуск Telegram-бота"""
@@ -162,8 +208,9 @@ def main():
         entry_points=[CommandHandler("start", start)],
         states={
             DESIGN: [CallbackQueryHandler(design_choice)],
-            INTRO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_intro)],
-            PROPOSAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_proposal)],
+            PAGE1: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_page1)],
+            PAGE2: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_page2)],
+            PAGE3: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_page3)],
             TIMES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_times)]
         },
         fallbacks=[]
@@ -171,6 +218,7 @@ def main():
 
     application.add_handler(conv_handler)
     application.run_polling()
+
 
 if __name__ == "__main__":
     main()
