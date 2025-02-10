@@ -8,7 +8,7 @@ import json
 TELEGRAM_BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 
-app = Flask(__name__, template_folder='template')
+app = Flask(__name__, template_folder='templates')
 DB_PATH = "app.db"
 
 def init_db():
