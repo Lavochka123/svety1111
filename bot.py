@@ -212,7 +212,7 @@ def main():
     """Запуск бота."""
     BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"  # замените на ваш токен
 
-    application = ApplicationBuilder().token(8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
