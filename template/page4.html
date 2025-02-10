@@ -3,33 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <title>Страница 4</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body class="{{ data.design }}">
+<body class="{{ data.design }}"
+{% if data.bg_image %}
+  style="background-image: url('{{ url_for('static', filename='uploads/' + data.bg_image) }}'); background-size: cover; background-position: center;"
+{% endif %}>
   <div class="container">
-    <!-- Добавляем заголовок -->
-    <h2>Выбери удобное время или укажи своё</h2>
-    <p>Пожалуйста, отметь один из вариантов:</p>
-
     <form method="POST" action="">
-      <ul style="list-style-type: disc; text-align: left; margin: 1rem 2rem;">
+      <ul>
         {% for t in data.times %}
-        <li style="margin-bottom: 0.5rem;">
+        <li>
           <label>
-            <input type="radio" name="selected_time" value="{{ t }}">
+            <input type="radio" name="selected_time" value="{{ t }}" required>
             {{ t }}
           </label>
         </li>
         {% endfor %}
       </ul>
-
-      <!-- Если хотите позволить ввести свой вариант — можно добавить: 
-           <p>Или введите свой:</p>
-           <input type="text" name="custom_time" placeholder="Например: 20:00 в пятницу"> 
-           и потом в app.py проверять, если selected_time пуст, берем custom_time.
-       -->
-
-      <button type="submit" class="button" style="margin-top: 1rem;">Подтвердить</button>
+      <button type="submit" class="button">Подтвердить</button>
     </form>
   </div>
 </body>
