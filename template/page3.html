@@ -3,22 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <title>Страница 3</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body class="{{ data.design }}">
+<body class="{{ data.design }}"
+{% if data.bg_image %}
+  style="background-image: url('{{ url_for('static', filename='uploads/' + data.bg_image) }}'); background-size: cover; background-position: center;"
+{% endif %}>
   <div class="container">
-    <!-- Можно вернуть "конверт", если хотите анимацию, но по условию "всё норм" – оставим. -->
-    <div class="letter-content">
-      <p>{{ data.page3 }}</p>
-    </div>
-
-    <div class="button-container" style="margin-top: 2rem;">
-      <!-- Кнопка "Нет" (AJAX) и "Да" (ссылка на page4) -->
+    <p>{{ data.page3 }}</p>
+    <div class="button-container">
       <button class="button" onclick="handleResponse('no')">Нет</button>
       <a href="/invite/{{ data.id }}/page4" class="button">Да</a>
     </div>
   </div>
-
   <script>
     const chatId = "{{ data.chat_id }}";
     function handleResponse(response) {
