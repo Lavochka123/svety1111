@@ -5,7 +5,7 @@ import threading
 import sqlite3
 import json
 
-TELEGRAM_BOT_TOKEN = "8046219766:YOUR_BOT_TOKEN"
+TELEGRAM_BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 
 app = Flask(__name__, template_folder='template')
