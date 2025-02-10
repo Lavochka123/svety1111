@@ -3,17 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <title>Страница 2</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body class="{{ data.design }}">
+<body class="{{ data.design }}"
+{% if data.bg_image %}
+  style="background-image: url('{{ url_for('static', filename='uploads/' + data.bg_image) }}'); background-size: cover; background-position: center;"
+{% endif %}>
   <div class="container">
-    <div class="letter-content">
-      <p>{{ data.page2 }}</p>
-    </div>
-
-    <div class="button-container" style="margin-top: 2rem;">
-      <a href="/invite/{{ data.id }}/page3" class="button">Дальше</a>
-    </div>
+    <p>{{ data.page2 }}</p>
+    <a href="/invite/{{ data.id }}/page3" class="button">Дальше</a>
   </div>
 </body>
 </html>
