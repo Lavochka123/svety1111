@@ -15,15 +15,19 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# Этапы диалога: DESIGN, PHOTO_UPLOAD, PAGE1, PAGE2, PAGE3, TIMES
-DESIGN, PHOTO_UPLOAD, PAGE1, PAGE2, PAGE3, TIMES = range(6)
+# Этапы диалога:
+# DESIGN - выбор темы или загрузка фото
+# PHOTO_UPLOAD - загрузка фото для фона (если выбрана опция "Загрузить своё фото")
+# PAGE1, PAGE2, PAGE3 - ввод текста страниц
+# SENDER - ввод имени (или псевдонима) отправителя
+# TIMES - варианты времени для приглашения
+DESIGN, PHOTO_UPLOAD, PAGE1, PAGE2, PAGE3, SENDER, TIMES = range(7)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# Теперь используем HTTPS для публичной ссылки
-PUBLIC_URL = "https://svety.uz"
+PUBLIC_URL = "https://svety.uz"  # публичный URL (с HTTPS)
 DB_PATH = "app.db"
 
 def create_table_if_not_exists():
@@ -38,6 +42,7 @@ def create_table_if_not_exists():
             page1 TEXT,
             page2 TEXT,
             page3 TEXT,
+            sender TEXT,
             times TEXT,
             chat_id TEXT
         )
@@ -45,7 +50,7 @@ def create_table_if_not_exists():
     conn.commit()
     conn.close()
 
-def save_invitation(design, bg_image, page1, page2, page3, times, chat_id):
+def save_invitation(design, bg_image, page1, page2, page3, sender, times, chat_id):
     """
     Сохраняет данные приглашения в БД.
     Возвращает сгенерированный invite_id (UUID).
@@ -54,8 +59,8 @@ def save_invitation(design, bg_image, page1, page2, page3, times, chat_id):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
-        INSERT INTO invitations (id, design, bg_image, page1, page2, page3, times, chat_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO invitations (id, design, bg_image, page1, page2, page3, sender, times, chat_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         invite_id,
         design,
@@ -63,6 +68,7 @@ def save_invitation(design, bg_image, page1, page2, page3, times, chat_id):
         page1,
         page2,
         page3,
+        sender,
         "\n".join(times),
         str(chat_id)
     ))
@@ -97,7 +103,7 @@ async def design_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data["design"] = choice
 
     if choice == "design_custom":
-        # Если выбран вариант с загрузкой фото, просим отправить изображение
+        # Если выбран вариант загрузки фото – просим отправить изображение
         await query.edit_message_text(
             text="Пожалуйста, отправь фотографию, которую хочешь использовать в качестве фона."
         )
@@ -120,10 +126,8 @@ async def handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Это не фотография. Пожалуйста, отправь фото.")
         return PHOTO_UPLOAD
 
-    # Берём фото в наилучшем разрешении
-    photo = update.message.photo[-1]
+    photo = update.message.photo[-1]  # выбираем фото в наилучшем разрешении
     file = await photo.get_file()
-    # Генерируем уникальное имя файла
     filename = f"{uuid.uuid4()}.jpg"
     upload_dir = "static/uploads"
     os.makedirs(upload_dir, exist_ok=True)
@@ -137,7 +141,7 @@ async def handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
     return PAGE1
 
 async def get_page1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняем введённый текст для первой страницы, переходим ко второй."""
+    """Сохраняем текст первой страницы, переходим ко второй."""
     page1_text = update.message.text.strip()
     context.user_data["page1"] = page1_text
 
@@ -161,12 +165,22 @@ async def get_page2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return PAGE3
 
 async def get_page3(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняем текст третьей страницы, переходим к выбору времени."""
+    """Сохраняем текст третьей страницы, переходим к вводу имени отправителя."""
     page3_text = update.message.text.strip()
     context.user_data["page3"] = page3_text
 
     await update.message.reply_text(
-        "Здорово! Укажи 3 варианта времени (каждый с новой строки). Например:\n\n"
+        "Прекрасно! Теперь введи своё имя или псевдоним, от кого это письмо."
+    )
+    return SENDER
+
+async def get_sender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сохраняем имя отправителя и переходим к вводу вариантов времени."""
+    sender_text = update.message.text.strip()
+    context.user_data["sender"] = sender_text
+
+    await update.message.reply_text(
+        "Отлично, " + sender_text + "! Теперь укажи 3 варианта времени (каждый с новой строки). Например:\n\n"
         "🕗 19:00 | 21 января\n"
         "🌙 20:30 | 22 января\n"
         "☕ 17:00 | 23 января"
@@ -183,14 +197,13 @@ async def get_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     page1 = context.user_data.get("page1", "")
     page2 = context.user_data.get("page2", "")
     page3 = context.user_data.get("page3", "")
+    sender = context.user_data.get("sender", "")
     chat_id = update.effective_chat.id
 
-    invite_id = save_invitation(design, bg_image, page1, page2, page3, times_list, chat_id)
+    invite_id = save_invitation(design, bg_image, page1, page2, page3, sender, times_list, chat_id)
 
-    # Формируем URL приглашения
     invite_url = f"{PUBLIC_URL}/invite/{invite_id}"
 
-    # Генерируем QR-код
     img = qrcode.make(invite_url)
     img_path = "invite_qr.png"
     img.save(img_path)
@@ -210,7 +223,7 @@ async def get_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def main():
     """Запуск бота."""
-    BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"  # замените на ваш токен
+    BOT_TOKEN = "8046219766:YOUR_BOT_TOKEN"  # замените на ваш токен
 
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -222,6 +235,7 @@ def main():
             PAGE1: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_page1)],
             PAGE2: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_page2)],
             PAGE3: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_page3)],
+            SENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_sender)],
             TIMES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_times)]
         },
         fallbacks=[]
