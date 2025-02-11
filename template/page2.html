@@ -4,6 +4,15 @@
   <meta charset="UTF-8">
   <title>Страница 2</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .sender-signature {
+      margin-top: 1rem;
+      font-size: 1.1em;
+      font-weight: 600;
+      text-align: center;
+      color: #333;
+    }
+  </style>
 </head>
 <body class="{{ data.design }}"
 {% if data.bg_image %}
@@ -12,6 +21,11 @@
   <div class="container">
     <p>{{ data.page2 }}</p>
     <a href="/invite/{{ data.id }}/page3" class="button">Дальше</a>
+    {% if data.sender %}
+      <div class="sender-signature">
+         От: {{ data.sender }}
+      </div>
+    {% endif %}
   </div>
 </body>
 </html>
