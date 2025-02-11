@@ -5,15 +5,24 @@ import threading
 import sqlite3
 import json
 
+# Замените токен на ваш
 TELEGRAM_BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 
-app = Flask(__name__, template_folder='templates')
+app = Flask(__name__, template_folder='template')
 DB_PATH = "app.db"
 
 def init_db():
     """
-    Создаёт таблицу invitations с новыми полями, если её нет.
+    Создаёт таблицу invitations с необходимыми полями, если её нет.
+    Поля:
+      - id: уникальный идентификатор (UUID)
+      - design: выбранная тема оформления
+      - bg_image: имя файла с загруженным фото для фона (если есть)
+      - page1, page2, page3: тексты страниц приглашения
+      - sender: имя или псевдоним отправителя
+      - times: варианты времени (хранятся в виде строки с разделителем "\n")
+      - chat_id: идентификатор чата, в который отправляются уведомления
     """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -25,6 +34,7 @@ def init_db():
             page1 TEXT,
             page2 TEXT,
             page3 TEXT,
+            sender TEXT,
             times TEXT,
             chat_id TEXT
         )
@@ -34,8 +44,8 @@ def init_db():
 
 init_db()
 
+# Создаем новый event loop для работы с асинхронными операциями Telegram
 loop = asyncio.new_event_loop()
-
 def run_loop(loop):
     asyncio.set_event_loop(loop)
     loop.run_forever()
@@ -43,6 +53,7 @@ def run_loop(loop):
 threading.Thread(target=run_loop, args=(loop,), daemon=True).start()
 
 def send_message_sync(chat_id, message):
+    """Отправляет сообщение в Telegram, используя глобальный event loop."""
     future = asyncio.run_coroutine_threadsafe(
         bot.send_message(chat_id=chat_id, text=message),
         loop
@@ -50,10 +61,10 @@ def send_message_sync(chat_id, message):
     return future.result(timeout=10)
 
 def get_invitation(invite_id):
-    """Получаем данные из БД: design, bg_image, page1, page2, page3, times, chat_id."""
+    """Получает данные приглашения из БД и возвращает их в виде словаря."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('SELECT design, bg_image, page1, page2, page3, times, chat_id FROM invitations WHERE id = ?', (invite_id,))
+    c.execute('SELECT design, bg_image, page1, page2, page3, sender, times, chat_id FROM invitations WHERE id = ?', (invite_id,))
     row = c.fetchone()
     conn.close()
     if row:
@@ -64,25 +75,34 @@ def get_invitation(invite_id):
             "page1": row[2],
             "page2": row[3],
             "page3": row[4],
-            "times": row[5].split("\n"),
-            "chat_id": row[6]
+            "sender": row[5],
+            "times": row[6].split("\n"),
+            "chat_id": row[7]
         }
     return None
 
-# Новый маршрут для перенаправления базового URL приглашения на страницу 1
+# Если кто-то переходит по базовому URL приглашения, перенаправляем на страницу 1
 @app.route('/invite/<invite_id>')
 def invitation_redirect(invite_id):
     return redirect(url_for('page1', invite_id=invite_id))
 
-# ---------- 1) Страница 1 ----------
 @app.route('/invite/<invite_id>/page1')
 def page1(invite_id):
     data = get_invitation(invite_id)
     if not data:
         return "Приглашение не найдено.", 404
+
+    # Отправляем уведомление в Telegram при каждом переходе на страницу 1
+    try:
+        send_message_sync(
+            data["chat_id"],
+            f"Ваше приглашение {invite_id} было посещено!"
+        )
+    except Exception as e:
+        print("Ошибка при отправке уведомления:", e)
+
     return render_template('page1.html', data=data)
 
-# ---------- 2) Страница 2 ----------
 @app.route('/invite/<invite_id>/page2')
 def page2(invite_id):
     data = get_invitation(invite_id)
@@ -90,7 +110,6 @@ def page2(invite_id):
         return "Приглашение не найдено.", 404
     return render_template('page2.html', data=data)
 
-# ---------- 3) Страница 3 ----------
 @app.route('/invite/<invite_id>/page3')
 def page3(invite_id):
     data = get_invitation(invite_id)
@@ -98,7 +117,6 @@ def page3(invite_id):
         return "Приглашение не найдено.", 404
     return render_template('page3.html', data=data)
 
-# ---------- 4) Страница 4 (выбор времени) ----------
 @app.route('/invite/<invite_id>/page4', methods=['GET', 'POST'])
 def page4(invite_id):
     data = get_invitation(invite_id)
@@ -108,6 +126,7 @@ def page4(invite_id):
     if request.method == 'GET':
         return render_template('page4.html', data=data)
 
+    # POST-запрос: обрабатываем выбранное время
     selected_time = request.form.get('selected_time')
     if not selected_time:
         return "Вы не выбрали время!", 400
@@ -121,7 +140,6 @@ def page4(invite_id):
 
     return redirect(url_for('page5', invite_id=invite_id, selected_time=selected_time))
 
-# ---------- 5) Страница 5 (Спасибо + комментарий) ----------
 @app.route('/invite/<invite_id>/page5', methods=['GET'])
 def page5(invite_id):
     data = get_invitation(invite_id)
@@ -131,7 +149,6 @@ def page5(invite_id):
     selected_time = request.args.get('selected_time', '')
     return render_template('page5.html', data=data, selected_time=selected_time)
 
-# ---------- AJAX для кнопки "Извини, не могу" ----------
 @app.route('/response', methods=['POST'])
 def response():
     req_data = request.get_json()
@@ -157,7 +174,6 @@ def comment():
 
     chat_id = data["chat_id"]
     message = f"Девушка оставила комментарий: {comment_text}"
-
     try:
         chat_id = int(chat_id)
         send_message_sync(chat_id, message)
