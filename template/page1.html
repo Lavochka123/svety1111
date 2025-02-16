@@ -15,6 +15,11 @@
     {% if data.sender %}
       <div class="sender-signature">От: {{ data.sender }}</div>
     {% endif %}
+    
+    <!-- Логотип цветочного магазина -->
+    <div class="footer-logo">
+      <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Логотип магазина">
+    </div>
   </div>
 </body>
 </html>
