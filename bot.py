@@ -35,7 +35,7 @@ OPTION, I_DESIGN, I_PHOTO_UPLOAD, I_PAGE1, I_PAGE2, I_PAGE3, I_SENDER, I_TIMES, 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 PUBLIC_URL = "https://svety.uz"  # публичный URL (с HTTPS)
 DB_PATH = "app.db"
-TELEGRAM_BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"  # замените на ваш токен
+TELEGRAM_BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"  # Замените на ваш реальный токен
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 def create_table_if_not_exists():
@@ -56,9 +56,10 @@ def create_table_if_not_exists():
     ''')
     conn.commit()
     conn.close()
+
 create_table_if_not_exists()
 
-# Создаем новый event loop для асинхронных операций Telegram
+# Создаем event loop для асинхронных операций Telegram
 loop = asyncio.new_event_loop()
 def run_loop(loop):
     asyncio.set_event_loop(loop)
@@ -158,7 +159,7 @@ async def option_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def invitation_design_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    choice = query.data
+    choice = query.data  # design_elegant, design_romantic, design_music, design_custom
     context.user_data["design"] = choice
     if choice == "design_custom":
         await query.edit_message_text("Пожалуйста, отправьте фотографию для фона приглашения.")
@@ -235,16 +236,16 @@ async def invitation_get_times(update: Update, context: ContextTypes.DEFAULT_TYP
 async def greeting_design_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    choice = query.data
+    choice = query.data  # g_design_1, g_design_2, g_design_3, g_design_custom
     context.user_data["g_design"] = choice
     if choice == "g_design_custom":
         await query.edit_message_text("Пожалуйста, отправьте фотографию для фона поздравления.")
         return G_PHOTO_UPLOAD
     else:
         predefined = {
-            "g_design_1": "greetings/1.jpg",
-            "g_design_2": "greetings/2.jpg",
-            "g_design_3": "greetings/3.jpg"
+            "g_design_1": "greetings/1.jpeg",  # используем расширение .jpeg
+            "g_design_2": "greetings/2.jpeg",
+            "g_design_3": "greetings/3.jpeg"
         }
         context.user_data["bg_image"] = predefined.get(choice, "")
         await query.edit_message_text("Введите поздравительный текст:")
@@ -277,7 +278,7 @@ async def greeting_get_sender(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data.get("g_design", ""),
         context.user_data.get("bg_image", ""),
         context.user_data.get("g_text", ""),
-        "", "",  # пустые для второго и третьей страницы
+        "", "",  # пустые для второй и третьей страниц
         context.user_data.get("sender", ""),
         ["Поздравление с 8 марта"],
         chat_id
