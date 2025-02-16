@@ -168,10 +168,22 @@ body.design_minimal {
 
 /* Стили для подписи отправителя */
 .sender-signature {
-  margin-top: 1.5rem;  /* увеличенный отступ, чтобы не накладывалось на кнопку */
+  margin-top: 1.5rem;
   font-size: 1.5em;
   font-weight: bold;
   text-align: center;
   color: #333;
   display: block;
 }
+
+/* Стили для логотипа в подвале */
+.footer-logo {
+  margin-top: 1rem;
+  text-align: center;
+}
+.footer-logo img {
+  width: 120px;
+  height: auto;
+  opacity: 0.8;
+}
+
