@@ -5,7 +5,7 @@
   <title>Поздравление с 8 марта</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
-    /* Дополнительные стили для поздравления можно добавить здесь */
+    /* Дополнительные стили для поздравления можно настроить здесь */
   </style>
 </head>
 <body class="{{ data.design }}"
@@ -14,7 +14,7 @@
 {% endif %}>
   <div class="container">
     <h2>Поздравление с 8 марта</h2>
-    <p>{{ data.page1 }}</p>  <!-- Для поздравления, текст сохраняется в поле page1 -->
+    <p>{{ data.page1 }}</p>  <!-- В поздравлении текст хранится в поле page1 -->
     <p>От: {{ data.sender }}</p>
   </div>
 </body>
