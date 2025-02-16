@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Поздравление с 8 марта</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    /* Дополнительные стили для поздравления можно добавить здесь */
+  </style>
+</head>
+<body class="{{ data.design }}"
+{% if data.bg_image %}
+  style="background-image: url('{{ url_for('static', filename=data.bg_image) }}'); background-size: cover; background-position: center;"
+{% endif %}>
+  <div class="container">
+    <h2>Поздравление с 8 марта</h2>
+    <p>{{ data.page1 }}</p>  <!-- Для поздравления, текст сохраняется в поле page1 -->
+    <p>От: {{ data.sender }}</p>
+  </div>
+</body>
+</html>
