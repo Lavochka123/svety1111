@@ -35,7 +35,7 @@ OPTION, I_DESIGN, I_PHOTO_UPLOAD, I_PAGE1, I_PAGE2, I_PAGE3, I_SENDER, I_TIMES, 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 PUBLIC_URL = "https://svety.uz"  # публичный URL (с HTTPS)
 DB_PATH = "app.db"
-TELEGRAM_BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"  # Замените на ваш реальный токен
+TELEGRAM_BOT_TOKEN = "7737841966:AAFIgmwHXNw1mvYZ8a4Jysl9KH1b_hb1x-c"  # Замените на ваш реальный токен
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 def create_table_if_not_exists():
