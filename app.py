@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 import telegram, asyncio, threading, sqlite3, json
-TELEGRAM_BOT_TOKEN = "8046219766:AAGFsWXIFTEPe8aaTBimVyWm2au2f-uIYSs"  # замените на ваш токен
+TELEGRAM_BOT_TOKEN = "7737841966:AAFIgmwHXNw1mvYZ8a4Jysl9KH1b_hb1x-c"  # замените на ваш токен
 bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
 app = Flask(__name__, template_folder='template')
 DB_PATH = "app.db"
