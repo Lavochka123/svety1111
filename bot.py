@@ -1,321 +1,398 @@
-import logging
 import os
-import qrcode
 import sqlite3
-import uuid
-import asyncio
-import threading
+import qrcode
+from io import BytesIO
+from telegram import Update, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackQueryHandler, CallbackContext
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ConversationHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-)
+# Telegram Bot Token (вставьте сюда токен своего бота)
+TELEGRAM_BOT_TOKEN = '7737841966:AAFIgmwHXNw1mvYZ8a4Jysl9KH1b_hb1x-c'
 
-# Состояния диалога:
-# OPTION – начальный выбор между приглашением и поздравлением
-# I_DESIGN – выбор темы для приглашения
-# I_PHOTO_UPLOAD – загрузка фото для приглашения (если выбран вариант custom)
-# I_PAGE1 – текст первой страницы приглашения
-# I_PAGE2 – текст второй страницы приглашения
-# I_PAGE3 – текст третьей страницы приглашения
-# I_SENDER – имя отправителя приглашения
-# I_TIMES – варианты времени для приглашения
-# G_DESIGN – выбор фона для поздравления с 8 марта
-# G_PHOTO_UPLOAD – загрузка фото для поздравления (если выбран вариант custom)
-# G_TEXT – поздравительный текст
-# G_SENDER – имя (от кого поздравление)
-OPTION, I_DESIGN, I_PHOTO_UPLOAD, I_PAGE1, I_PAGE2, I_PAGE3, I_SENDER, I_TIMES, G_DESIGN, G_PHOTO_UPLOAD, G_TEXT, G_SENDER = range(12)
+# Определение состояний для ConversationHandler
+NAME, DATETIME, TEXT1, TEXT2, PHOTO, PHOTO_CONFIRM, CONFIRM, CHOOSE_FIELD, EDIT_TEXT, EDIT_PHOTO = range(10)
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-PUBLIC_URL = "https://svety.uz"  # публичный URL (с HTTPS)
-DB_PATH = "app.db"
-TELEGRAM_BOT_TOKEN = "7737841966:AAFIgmwHXNw1mvYZ8a4Jysl9KH1b_hb1x-c"  # Замените на ваш реальный токен
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+# Настройки путей и базы данных
+BASE_URL = "http://your-server.com"  # Адрес вашего сервера (измените на свой домен или IP)
+DB_FILE = "invitations.db"
+STATIC_INVITES_DIR = os.path.join("static", "invites")
+STATIC_TMP_DIR = os.path.join("static", "tmp")
 
-def create_table_if_not_exists():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS invitations (
-            id TEXT PRIMARY KEY,
-            design TEXT,
-            bg_image TEXT,
-            page1 TEXT,
-            page2 TEXT,
-            page3 TEXT,
-            sender TEXT,
-            times TEXT,
-            chat_id TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+# Обеспечить наличие необходимых директорий
+os.makedirs(STATIC_INVITES_DIR, exist_ok=True)
+os.makedirs(STATIC_TMP_DIR, exist_ok=True)
 
-create_table_if_not_exists()
-
-# Создаем event loop для асинхронных операций Telegram
-loop = asyncio.new_event_loop()
-def run_loop(loop):
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
-threading.Thread(target=run_loop, args=(loop,), daemon=True).start()
-
-def send_message_sync(chat_id, message):
-    future = asyncio.run_coroutine_threadsafe(
-        bot.send_message(chat_id=chat_id, text=message),
-        loop
+def start(update: Update, context: CallbackContext) -> int:
+    """Начало диалога по команде /start: приветствие и запрос названия события."""
+    update.message.reply_text(
+        "Привет! Я помогу создать онлайн-приглашение.\n"
+        "Давайте начнём.\n"
+        "Как называется Ваше событие или имя приглашения?",
+        reply_markup=ReplyKeyboardRemove()
     )
-    return future.result(timeout=10)
+    return NAME
 
-def get_invitation(invite_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('SELECT design, bg_image, page1, page2, page3, sender, times, chat_id FROM invitations WHERE id = ?', (invite_id,))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return {
-            "id": invite_id,
-            "design": row[0],
-            "bg_image": row[1],
-            "page1": row[2],
-            "page2": row[3],
-            "page3": row[4],
-            "sender": row[5],
-            "times": row[6].split("\n") if row[6] else [],
-            "chat_id": row[7]
-        }
-    return None
+def cancel(update: Update, context: CallbackContext) -> int:
+    """Обработка команды /cancel: отмена создания приглашения на любом этапе."""
+    # Удаляем временное изображение, если было сохранено
+    temp_image = context.user_data.get("photo_temp_path")
+    if temp_image and os.path.exists(temp_image):
+        try:
+            os.remove(temp_image)
+        except OSError:
+            pass
+    # Очищаем данные пользователя
+    context.user_data.clear()
+    update.message.reply_text("Создание приглашения отменено. Если захотите начать заново, отправьте команду /start.")
+    return ConversationHandler.END
 
-def save_invitation(design, bg_image, page1, page2, page3, sender, times, chat_id):
-    invite_id = str(uuid.uuid4())
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO invitations (id, design, bg_image, page1, page2, page3, sender, times, chat_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        invite_id,
-        design,
-        bg_image,
-        page1,
-        page2,
-        page3,
-        sender,
-        "\n".join(times),
-        str(chat_id)
-    ))
-    conn.commit()
-    conn.close()
-    return invite_id
-
-# --- Начальный выбор варианта ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text(
-        "Добро пожаловать!\nВыберите, что вы хотите создать:\n\n1. Приглашение на свидание\n2. Поздравление с 8 марта"
+def name_handler(update: Update, context: CallbackContext) -> int:
+    """Получение названия события/приглашения."""
+    name = update.message.text.strip()
+    # Валидация названия
+    if not name:
+        update.message.reply_text("Название не может быть пустым. Пожалуйста, введите название события или приглашения.")
+        return NAME
+    if len(name) > 100:
+        update.message.reply_text("Название слишком длинное (более 100 символов). Пожалуйста, введите покороче.")
+        return NAME
+    # Сохранение названия
+    context.user_data["name"] = name
+    # Запрос даты и времени
+    update.message.reply_text(
+        f"Отлично, событие называется: {name}.\n"
+        "Теперь укажите дату и время события (например, 25 декабря 2025, 18:00):"
     )
-    keyboard = [
-        [InlineKeyboardButton("Приглашение на свидание", callback_data="invitation")],
-        [InlineKeyboardButton("Поздравление с 8 марта", callback_data="greeting")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выберите вариант:", reply_markup=reply_markup)
-    return OPTION
+    return DATETIME
 
-async def option_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+def date_handler(update: Update, context: CallbackContext) -> int:
+    """Получение даты и времени мероприятия."""
+    event_time = update.message.text.strip()
+    # Валидация ввода
+    if not event_time:
+        update.message.reply_text("Дата/время не может быть пустым. Пожалуйста, укажите дату и время проведения мероприятия.")
+        return DATETIME
+    if len(event_time) > 100:
+        update.message.reply_text("Слишком длинное описание даты/времени. Пожалуйста, укажите чуть короче.")
+        return DATETIME
+    # Сохранение даты и времени
+    context.user_data["datetime"] = event_time
+    # Запрос основного текста приглашения (страница 1)
+    update.message.reply_text(
+        "Хорошо. Теперь введите основной текст приглашения (страница 1).\n"
+        "Например, несколько приветственных слов или основную информацию о событии."
+    )
+    return TEXT1
+
+def text1_handler(update: Update, context: CallbackContext) -> int:
+    """Получение текста для первой страницы приглашения."""
+    text1 = update.message.text.strip()
+    # Валидация текста
+    if not text1:
+        update.message.reply_text("Текст не должен быть пустым. Пожалуйста, введите текст для первой страницы приглашения.")
+        return TEXT1
+    if len(text1) > 1000:
+        update.message.reply_text("Текст слишком длинный (более 1000 символов). Пожалуйста, сократите и попробуйте снова.")
+        return TEXT1
+    # Сохранение текста страницы 1
+    context.user_data["text1"] = text1
+    # Запрос дополнительного текста (страница 2)
+    update.message.reply_text(
+        "Теперь введите дополнительный текст приглашения (страница 2).\n"
+        "Например, подробности о мероприятии, адрес или другую дополнительную информацию."
+    )
+    return TEXT2
+
+def text2_handler(update: Update, context: CallbackContext) -> int:
+    """Получение текста для второй страницы приглашения."""
+    text2 = update.message.text.strip()
+    # Валидация текста
+    if not text2:
+        update.message.reply_text("Текст не должен быть пустым. Пожалуйста, введите текст для второй страницы приглашения.")
+        return TEXT2
+    if len(text2) > 1000:
+        update.message.reply_text("Текст слишком длинный (более 1000 символов). Пожалуйста, сократите его и попробуйте снова.")
+        return TEXT2
+    # Сохранение текста страницы 2
+    context.user_data["text2"] = text2
+    # Запрос фонового изображения
+    update.message.reply_text(
+        "Теперь отправьте фоновое изображение для приглашения.\n"
+        "Это может быть фотография или картинка, которая будет на заднем плане приглашения."
+    )
+    return PHOTO
+
+def photo_handler(update: Update, context: CallbackContext) -> int:
+    """Обработка загруженного пользователем фото (фонового изображения)."""
+    photo_file = None
+    if update.message.photo:
+        # Если фото отправлено как изображение, берем самый большой размер
+        photo_file = update.message.photo[-1].get_file()
+    elif update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith("image"):
+        # Если изображение отправлено как документ
+        photo_file = update.message.document.get_file()
+    else:
+        update.message.reply_text("Пожалуйста, отправьте изображение (фото) для фона приглашения.")
+        return PHOTO
+    # Получаем расширение файла, если доступно
+    file_path = photo_file.file_path  # URL файла на серверах Telegram
+    ext = os.path.splitext(file_path)[1] if file_path else ".jpg"
+    if ext == "":
+        ext = ".jpg"
+    # Формируем уникальное имя для временного файла
+    chat_id = update.message.chat_id
+    timestamp = int(update.message.date.timestamp())
+    tmp_filename = f"bg_{chat_id}_{timestamp}{ext}"
+    tmp_path = os.path.join(STATIC_TMP_DIR, tmp_filename)
+    # Скачиваем файл во временную папку
+    photo_file.download(tmp_path)
+    # Если ранее уже было сохранено временное изображение (например, пользователь решил сменить фото)
+    old_temp = context.user_data.get("photo_temp_path")
+    if old_temp and old_temp != tmp_path and os.path.exists(old_temp):
+        try:
+            os.remove(old_temp)
+        except OSError:
+            pass
+    # Сохраняем путь к новому временному файлу в данных пользователя
+    context.user_data["photo_temp_path"] = tmp_path
+    # Показываем пользователю превью фото и запрашиваем подтверждение
+    context.bot.send_photo(chat_id=update.message.chat_id, photo=open(tmp_path, "rb"),
+                            caption="Предпросмотр фонового изображения. Использовать это изображение?",
+                            reply_markup=InlineKeyboardMarkup([
+                                [InlineKeyboardButton("Да", callback_data="photo_yes"), InlineKeyboardButton("Нет", callback_data="photo_no")]
+                            ]))
+    # Переходим к состоянию подтверждения фото
+    return PHOTO_CONFIRM
+
+def photo_confirm_handler(update: Update, context: CallbackContext) -> int:
+    """Обработка ответа пользователя на использование загруженного фонового фото."""
     query = update.callback_query
-    await query.answer()
+    if not query:
+        # Не должно происходить, но на всякий случай остаемся в состоянии ожидания
+        return PHOTO_CONFIRM
+    query.answer()
     choice = query.data
-    if choice == "invitation":
-        await query.edit_message_text("Вы выбрали приглашение на свидание.")
-        keyboard = [
-            [InlineKeyboardButton("🎆 Элегантная ночь", callback_data="design_elegant")],
-            [InlineKeyboardButton("🌹 Романтика", callback_data="design_romantic")],
-            [InlineKeyboardButton("🎶 Музыка и кино", callback_data="design_music")],
-            [InlineKeyboardButton("🖼 Загрузить своё фото", callback_data="design_custom")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.reply_text("Выберите тему для приглашения:", reply_markup=reply_markup)
-        return I_DESIGN
-    elif choice == "greeting":
-        await query.edit_message_text("Вы выбрали поздравление с 8 марта.")
-        keyboard = [
-            [InlineKeyboardButton("💐 Цветы 1", callback_data="g_design_1")],
-            [InlineKeyboardButton("💐 Цветы 2", callback_data="g_design_2")],
-            [InlineKeyboardButton("💐 Цветы 3", callback_data="g_design_3")],
-            [InlineKeyboardButton("🖼 Загрузить своё фото", callback_data="g_design_custom")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.reply_text("Выберите фон для поздравления:", reply_markup=reply_markup)
-        return G_DESIGN
+    if choice == "photo_yes":
+        # Пользователь подтвердил использование фото — формируем сводку данных приглашения
+        name = context.user_data.get("name", "")
+        datetime = context.user_data.get("datetime", "")
+        text1 = context.user_data.get("text1", "")
+        text2 = context.user_data.get("text2", "")
+        summary = (f"*Проверьте данные приглашения:*\n"
+                   f"*Название:* {name}\n"
+                   f"*Дата и время:* {datetime}\n"
+                   f"*Текст страницы 1:* {text1}\n"
+                   f"*Текст страницы 2:* {text2}\n"
+                   f"*Фоновое изображение:* приложено\n\n"
+                   f"Всё верно?")
+        # Отправляем сообщение-резюме с Inline-кнопками "Создать" и "Изменить"
+        context.bot.send_message(chat_id=query.message.chat_id, text=summary, parse_mode="Markdown",
+                                 reply_markup=InlineKeyboardMarkup([
+                                     [InlineKeyboardButton("Создать", callback_data="create_invite"),
+                                      InlineKeyboardButton("Изменить", callback_data="edit_invite")]
+                                 ]))
+        return CONFIRM
+    elif choice == "photo_no":
+        # Пользователь отказался от этого фото — удаляем временный файл и предлагаем отправить другой
+        temp_path = context.user_data.get("photo_temp_path")
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        context.user_data["photo_temp_path"] = None
+        context.bot.send_message(chat_id=query.message.chat_id, text="Хорошо, отправьте другое изображение для фона.")
+        return PHOTO
+    # В остальных случаях остаемся в этом же состоянии
+    return PHOTO_CONFIRM
 
-# --- Invitation Flow ---
-async def invitation_design_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+def confirm_handler(update: Update, context: CallbackContext) -> int:
+    """Обработка выбора на этапе финального подтверждения: создание или редактирование."""
     query = update.callback_query
-    await query.answer()
-    choice = query.data  # design_elegant, design_romantic, design_music, design_custom
-    context.user_data["design"] = choice
-    if choice == "design_custom":
-        await query.edit_message_text("Пожалуйста, отправьте фотографию для фона приглашения.")
-        return I_PHOTO_UPLOAD
-    else:
-        predefined = {
-            "design_elegant": "designs/elegant.jpg",
-            "design_romantic": "designs/romantic.jpg",
-            "design_music": "designs/music.jpg"
-        }
-        context.user_data["bg_image"] = predefined.get(choice, "")
-        await query.edit_message_text("Введите текст для первой страницы приглашения:")
-        return I_PAGE1
+    if not query:
+        return CONFIRM
+    query.answer()
+    choice = query.data
+    if choice == "create_invite":
+        # Пользователь подтвердил создание приглашения
+        name = context.user_data.get("name", "")
+        datetime = context.user_data.get("datetime", "")
+        text1 = context.user_data.get("text1", "")
+        text2 = context.user_data.get("text2", "")
+        photo_temp_path = context.user_data.get("photo_temp_path")
+        # Сохранение приглашения в базу данных
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS invitations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT,
+                        datetime TEXT,
+                        text1 TEXT,
+                        text2 TEXT,
+                        image_path TEXT
+                      )""")
+        conn.commit()
+        cur.execute("INSERT INTO invitations (name, datetime, text1, text2, image_path) VALUES (?, ?, ?, ?, ?)",
+                    (name, datetime, text1, text2, ""))
+        invite_id = cur.lastrowid
+        # Обработка сохранения изображения на постоянное хранение
+        image_rel_path = ""
+        if photo_temp_path:
+            ext = os.path.splitext(photo_temp_path)[1]  # расширение временного файла
+            final_image_name = f"invite_{invite_id}{ext}"
+            final_image_path = os.path.join(STATIC_INVITES_DIR, final_image_name)
+            try:
+                os.replace(photo_temp_path, final_image_path)
+            except OSError:
+                # Если не удалось переместить, копируем и удаляем исходник
+                import shutil
+                shutil.copy(photo_temp_path, final_image_path)
+                os.remove(photo_temp_path)
+            image_rel_path = os.path.join("invites", final_image_name)
+            cur.execute("UPDATE invitations SET image_path = ? WHERE id = ?", (image_rel_path, invite_id))
+        conn.commit()
+        conn.close()
+        # Формируем ссылку на приглашение
+        invite_link = f"{BASE_URL}/invite/{invite_id}"
+        # Генерируем QR-код для ссылки
+        qr = qrcode.QRCode(box_size=10, border=2)
+        qr.add_data(invite_link)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="black", back_color="white")
+        qr_bytes = BytesIO()
+        qr_img.save(qr_bytes, format="PNG")
+        qr_bytes.seek(0)
+        # Отправляем ссылку и QR-код пользователю
+        context.bot.send_message(chat_id=query.message.chat_id,
+                                 text=f"✅ Приглашение создано!\nВот ссылка: {invite_link}\nМожете поделиться ею или QR-кодом ниже.")
+        context.bot.send_photo(chat_id=query.message.chat_id, photo=qr_bytes, filename="qrcode.png", caption="QR-код для приглашения")
+        # Завершаем разговор и очищаем данные
+        context.user_data.clear()
+        return ConversationHandler.END
+    elif choice == "edit_invite":
+        # Пользователь выбрал редактирование данных — предлагаем выбор поля для изменения
+        keyboard = [
+            [InlineKeyboardButton("Имя", callback_data="edit_field_name"),
+             InlineKeyboardButton("Дата/время", callback_data="edit_field_datetime")],
+            [InlineKeyboardButton("Текст 1", callback_data="edit_field_text1"),
+             InlineKeyboardButton("Текст 2", callback_data="edit_field_text2")],
+            [InlineKeyboardButton("Фон. изображение", callback_data="edit_field_photo")]
+        ]
+        context.bot.send_message(chat_id=query.message.chat_id, text="Что нужно исправить?",
+                                 reply_markup=InlineKeyboardMarkup(keyboard))
+        return CHOOSE_FIELD
+    return CONFIRM
 
-async def invitation_handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not update.message.photo:
-        await update.message.reply_text("Это не фотография. Пожалуйста, отправьте фото.")
-        return I_PHOTO_UPLOAD
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
-    filename = f"{uuid.uuid4()}.jpg"
-    upload_dir = "static/uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, filename)
-    await file.download_to_drive(file_path)
-    context.user_data["bg_image"] = "uploads/" + filename
-    await update.message.reply_text("Введите текст для первой страницы приглашения:")
-    return I_PAGE1
-
-async def invitation_get_page1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["page1"] = update.message.text.strip()
-    await update.message.reply_text("Введите текст для второй страницы:")
-    return I_PAGE2
-
-async def invitation_get_page2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["page2"] = update.message.text.strip()
-    await update.message.reply_text("Введите текст для третьей страницы приглашения:")
-    return I_PAGE3
-
-async def invitation_get_page3(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["page3"] = update.message.text.strip()
-    await update.message.reply_text("Введите ваше имя (от кого приглашение):")
-    return I_SENDER
-
-async def invitation_get_sender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["sender"] = update.message.text.strip()
-    await update.message.reply_text("Введите варианты времени для встречи (каждый с новой строки):")
-    return I_TIMES
-
-async def invitation_get_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    times_text = update.message.text
-    times_list = [line.strip() for line in times_text.splitlines() if line.strip()]
-    chat_id = update.effective_chat.id
-    invite_id = save_invitation(
-        context.user_data.get("design", ""),
-        context.user_data.get("bg_image", ""),
-        context.user_data.get("page1", ""),
-        context.user_data.get("page2", ""),
-        context.user_data.get("page3", ""),
-        context.user_data.get("sender", ""),
-        times_list,
-        chat_id
-    )
-    invite_url = f"{PUBLIC_URL}/invite/{invite_id}"
-    img = qrcode.make(invite_url)
-    img_path = "invite_qr.png"
-    img.save(img_path)
-    with open(img_path, "rb") as photo:
-        await update.message.reply_photo(photo=photo, caption=f"Приглашение готово!\nВот ваша ссылка: {invite_url}")
-    os.remove(img_path)
-    return ConversationHandler.END
-
-# --- Greeting Flow ---
-async def greeting_design_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+def choose_field_handler(update: Update, context: CallbackContext) -> int:
+    """Обработка выбора поля, которое пользователь хочет отредактировать."""
     query = update.callback_query
-    await query.answer()
-    choice = query.data  # g_design_1, g_design_2, g_design_3, g_design_custom
-    context.user_data["g_design"] = choice
-    if choice == "g_design_custom":
-        await query.edit_message_text("Пожалуйста, отправьте фотографию для фона поздравления.")
-        return G_PHOTO_UPLOAD
-    else:
-        predefined = {
-            "g_design_1": "greetings/1.jpeg",  # используем расширение .jpeg
-            "g_design_2": "greetings/2.jpeg",
-            "g_design_3": "greetings/3.jpeg"
-        }
-        context.user_data["bg_image"] = predefined.get(choice, "")
-        await query.edit_message_text("Введите поздравительный текст:")
-        return G_TEXT
+    if not query:
+        return CHOOSE_FIELD
+    query.answer()
+    data = query.data
+    chat_id = query.message.chat_id
+    # В зависимости от выбранного поля, запрашиваем новый ввод
+    if data == "edit_field_name":
+        context.bot.send_message(chat_id=chat_id, text="Отправьте новое название события:")
+        context.user_data["editing_field"] = "name"
+        return EDIT_TEXT
+    elif data == "edit_field_datetime":
+        context.bot.send_message(chat_id=chat_id, text="Отправьте новую дату и время мероприятия:")
+        context.user_data["editing_field"] = "datetime"
+        return EDIT_TEXT
+    elif data == "edit_field_text1":
+        context.bot.send_message(chat_id=chat_id, text="Отправьте новый текст для страницы 1:")
+        context.user_data["editing_field"] = "text1"
+        return EDIT_TEXT
+    elif data == "edit_field_text2":
+        context.bot.send_message(chat_id=chat_id, text="Отправьте новый текст для страницы 2:")
+        context.user_data["editing_field"] = "text2"
+        return EDIT_TEXT
+    elif data == "edit_field_photo":
+        context.bot.send_message(chat_id=chat_id, text="Отправьте новое фоновое изображение:")
+        context.user_data["editing_field"] = "photo"
+        return EDIT_PHOTO
+    # Если пришло что-то неожиданное, остаемся в том же состоянии
+    return CHOOSE_FIELD
 
-async def greeting_handle_photo_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not update.message.photo:
-        await update.message.reply_text("Это не фотография. Пожалуйста, отправьте фото.")
-        return G_PHOTO_UPLOAD
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
-    filename = f"{uuid.uuid4()}.jpg"
-    upload_dir = "static/uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, filename)
-    await file.download_to_drive(file_path)
-    context.user_data["bg_image"] = "uploads/" + filename
-    await update.message.reply_text("Введите поздравительный текст:")
-    return G_TEXT
+def edit_text_handler(update: Update, context: CallbackContext) -> int:
+    """Получение нового значения для текстового поля при редактировании."""
+    field = context.user_data.get("editing_field")
+    new_value = update.message.text.strip()
+    # Проверка на пустоту
+    if not new_value:
+        update.message.reply_text("Пустое значение недопустимо. Пожалуйста, введите данные.")
+        return EDIT_TEXT
+    # Проверка на длину в зависимости от поля
+    if field in ("name", "datetime") and len(new_value) > 100:
+        update.message.reply_text("Слишком длинный текст, пожалуйста, сократите.")
+        return EDIT_TEXT
+    if field in ("text1", "text2") and len(new_value) > 1000:
+        update.message.reply_text("Слишком длинный текст, пожалуйста, сократите.")
+        return EDIT_TEXT
+    # Сохранение нового значения
+    context.user_data[field] = new_value
+    # Очистка флага редактируемого поля
+    context.user_data.pop("editing_field", None)
+    # Вывод обновленной сводки данных
+    name = context.user_data.get("name", "")
+    datetime = context.user_data.get("datetime", "")
+    text1 = context.user_data.get("text1", "")
+    text2 = context.user_data.get("text2", "")
+    summary = (f"*Обновленные данные приглашения:*\n"
+               f"*Название:* {name}\n"
+               f"*Дата и время:* {datetime}\n"
+               f"*Текст страницы 1:* {text1}\n"
+               f"*Текст страницы 2:* {text2}\n"
+               f"*Фоновое изображение:* приложено\n\n"
+               f"Всё верно?")
+    update.message.reply_text(summary, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("Создать", callback_data="create_invite"),
+         InlineKeyboardButton("Изменить", callback_data="edit_invite")]
+    ]))
+    return CONFIRM
 
-async def greeting_get_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["g_text"] = update.message.text.strip()
-    await update.message.reply_text("Введите ваше имя (от кого поздравление, от кого эти цветы):")
-    return G_SENDER
-
-async def greeting_get_sender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["sender"] = update.message.text.strip()
-    chat_id = update.effective_chat.id
-    invite_id = save_invitation(
-        context.user_data.get("g_design", ""),
-        context.user_data.get("bg_image", ""),
-        context.user_data.get("g_text", ""),
-        "", "",  # пустые для второй и третьей страниц
-        context.user_data.get("sender", ""),
-        ["Поздравление с 8 марта"],
-        chat_id
-    )
-    invite_url = f"{PUBLIC_URL}/invite/{invite_id}"
-    img = qrcode.make(invite_url)
-    img_path = "invite_qr.png"
-    img.save(img_path)
-    with open(img_path, "rb") as photo:
-        await update.message.reply_photo(photo=photo, caption=f"Поздравление готово!\nВот ваша ссылка: {invite_url}")
-    os.remove(img_path)
-    return ConversationHandler.END
+def edit_photo_handler(update: Update, context: CallbackContext) -> int:
+    """Обработка нового изображения при редактировании фото."""
+    # Здесь переиспользуем логику стандартного обработчика фото
+    return photo_handler(update, context)
 
 def main():
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    """Запуск бота."""
+    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
+    # Определение ConversationHandler для диалога создания приглашения
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            OPTION: [CallbackQueryHandler(option_choice, pattern="^(invitation|greeting)$")],
-            # Invitation flow:
-            I_DESIGN: [CallbackQueryHandler(invitation_design_choice, pattern="^design_.*$")],
-            I_PHOTO_UPLOAD: [MessageHandler(filters.PHOTO, invitation_handle_photo_upload)],
-            I_PAGE1: [MessageHandler(filters.TEXT & ~filters.COMMAND, invitation_get_page1)],
-            I_PAGE2: [MessageHandler(filters.TEXT & ~filters.COMMAND, invitation_get_page2)],
-            I_PAGE3: [MessageHandler(filters.TEXT & ~filters.COMMAND, invitation_get_page3)],
-            I_SENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, invitation_get_sender)],
-            I_TIMES: [MessageHandler(filters.TEXT & ~filters.COMMAND, invitation_get_times)],
-            # Greeting flow:
-            G_DESIGN: [CallbackQueryHandler(greeting_design_choice, pattern="^g_design_.*$")],
-            G_PHOTO_UPLOAD: [MessageHandler(filters.PHOTO, greeting_handle_photo_upload)],
-            G_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, greeting_get_text)],
-            G_SENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, greeting_get_sender)]
+            NAME: [MessageHandler(Filters.text & ~Filters.command, name_handler)],
+            DATETIME: [MessageHandler(Filters.text & ~Filters.command, date_handler)],
+            TEXT1: [MessageHandler(Filters.text & ~Filters.command, text1_handler)],
+            TEXT2: [MessageHandler(Filters.text & ~Filters.command, text2_handler)],
+            PHOTO: [MessageHandler((Filters.photo | Filters.document.category("image")) & ~Filters.command, photo_handler)],
+            PHOTO_CONFIRM: [
+                CallbackQueryHandler(photo_confirm_handler, pattern="^photo_yes$|^photo_no$"),
+                MessageHandler((Filters.photo | Filters.document.category("image")) & ~Filters.command, photo_handler)
+            ],
+            CONFIRM: [
+                CallbackQueryHandler(confirm_handler, pattern="^create_invite$|^edit_invite$"),
+                MessageHandler(Filters.text & ~Filters.command,
+                               lambda update, ctx: update.message.reply_text("Пожалуйста, воспользуйтесь кнопками ниже для подтверждения или изменения."))
+            ],
+            CHOOSE_FIELD: [CallbackQueryHandler(choose_field_handler, pattern="^edit_field_")],
+            EDIT_TEXT: [MessageHandler(Filters.text & ~Filters.command, edit_text_handler)],
+            EDIT_PHOTO: [
+                MessageHandler((Filters.photo | Filters.document.category("image")) & ~Filters.command, edit_photo_handler),
+                CallbackQueryHandler(photo_confirm_handler, pattern="^photo_yes$|^photo_no$")
+            ]
         },
-        fallbacks=[]
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
-    application.add_handler(conv_handler)
-    application.run_polling()
+    dp.add_handler(conv_handler)
+    # Дополнительно добавляем отдельный обработчик /cancel вне разговора (на всякий случай)
+    dp.add_handler(CommandHandler("cancel", cancel))
+    # Запуск бота
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
