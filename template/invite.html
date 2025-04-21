@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Приглашение: {{ name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body {% if image_path %}style="background-image: url('{{ url_for('static', filename=image_path) }}');"{% endif %}>
+    <div class="invite-container">
+        <h1>{{ name }}</h1>
+        <p class="datetime">{{ datetime }}</p>
+        <p class="text1">{{ text1.replace('\n', '<br />')|safe }}</p>
+        <p class="text2">{{ text2.replace('\n', '<br />')|safe }}</p>
+    </div>
+</body>
+</html>
