@@ -12,7 +12,7 @@ TELEGRAM_BOT_TOKEN = '7737841966:AAFIgmwHXNw1mvYZ8a4Jysl9KH1b_hb1x-c'
 NAME, DATETIME, TEXT1, TEXT2, PHOTO, PHOTO_CONFIRM, CONFIRM, CHOOSE_FIELD, EDIT_TEXT, EDIT_PHOTO = range(10)
 
 # Настройки путей и базы данных
-BASE_URL = "http://your-server.com"  # Адрес вашего сервера (измените на свой домен или IP)
+BASE_URL = "https://svety.uz"  # Адрес вашего сервера (измените на свой домен или IP)
 DB_FILE = "invitations.db"
 STATIC_INVITES_DIR = os.path.join("static", "invites")
 STATIC_TMP_DIR = os.path.join("static", "tmp")
