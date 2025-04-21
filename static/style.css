@@ -1,0 +1,29 @@
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #f0f0f0; /* Фоновый цвет по умолчанию (если нет изображения) */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    min-height: 100vh;
+}
+.invite-container {
+    max-width: 600px;
+    margin: 50px auto;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+}
+.invite-container h1 {
+    margin-top: 0;
+}
+.invite-container .datetime {
+    font-style: italic;
+    margin-bottom: 20px;
+}
+.invite-container .text1,
+.invite-container .text2 {
+    text-align: left;
+    margin-bottom: 10px;
+}
